@@ -4,9 +4,13 @@ import logging
 import sys
 import os
 
-from automation_server_client import AutomationServer, Workqueue, WorkItemError, Credential
-from nexus_database_client import NexusDatabaseClient
+from automation_server_client import AutomationServer, Workqueue, WorkItemError, Credential, WorkItemStatus
+from datetime import datetime, timedelta, timezone
 from kmd_nexus_client import NexusClientManager
+from kmd_nexus_client.tree_helpers import (
+    filter_by_path
+)
+from nexus_database_client import NexusDatabaseClient
 from odk_tools.tracking import Tracker
 from odk_tools.reporting import Reporter
 from process.config import get_excel_mapping, load_excel_mapping
@@ -17,6 +21,56 @@ tracker: Tracker
 reporter: Reporter
 
 proces_navn = "Påmindelse om afregning af indsatser"
+
+def opret_opgave_på_indsats(indsats_reference: dict):
+    regler = get_excel_mapping()
+    irrelevante_leverandører = regler.get("Irrelevante leverandører", [])
+    paragraffer = {item.split(" | ")[0]: item.split(" | ")[1] for item in regler.get("Paragraffer til Løn og Personale", [])}
+    indsats = nexus.hent_fra_reference(indsats_reference)
+    opgave_historik = nexus.opgaver.hent_opgave_historik(indsats)
+    opgave_modtager = "Regnskab BSF"
+
+    # check irrelevante leverandører    
+    elementer = nexus.indsatser.hent_indsats_elementer(indsats)        
+    supplier_obj = (elementer or {}).get("supplier", {})
+    nested_supplier = (supplier_obj or {}).get("supplier", {})
+    leverandør = (nested_supplier or {}).get("name", None)
+
+    if leverandør is None:
+        return  # Ingen leverandør, spring oprettelse over
+
+    if leverandør in irrelevante_leverandører:
+        return  # Irrelevant leverandør, spring oprettelse over
+        
+    if opgave_historik is not None:
+        for opgave in opgave_historik:            
+            if opgave["type"]["name"] == "Økonomi/Regnskab" and (
+                opgave["lastStateChangeDate"] > indsats_reference["date"] or
+                opgave["workflowState"]["name"] == "Aktiv"
+            ):
+                return  # Opgave oprettet inden for de sidste 2 dage, spring oprettelse over
+
+    # Check paragraf ift. opgavemodtager        
+    paragraf = elementer.get("paragraph", {}).get("paragraph", {})
+
+    if paragraf is not None and paragraf["name"] in paragraffer.keys():
+        # check if paragraf.name exist in paragraffer dict and if the value matches paragraf.section
+        value = paragraffer.get(paragraf["name"], None)
+        if value == paragraf["section"]:
+            opgave_modtager = "Løn og Personale"
+
+    nexus.opgaver.opret_opgave(
+        objekt=indsats,
+        opgave_type="Økonomi/Regnskab",
+        titel="Økonomi/Regnskab",
+        ansvarlig_organisation=opgave_modtager,
+        start_dato=datetime.now().date(),
+        forfald_dato=datetime.now().date(),
+        beskrivelse="Håndtering af indsatser til økonomi"
+    )
+
+    tracker.track_task(proces_navn)
+
 
 async def populate_queue(workqueue: Workqueue):    
     regler = get_excel_mapping()
@@ -37,27 +91,47 @@ async def populate_queue(workqueue: Workqueue):
             workqueue.add_item(data, reference=borger["Cpr"])
 
 async def process_workqueue(workqueue: Workqueue):
+    regler = get_excel_mapping()
     logger = logging.getLogger(__name__)
-
-    logger.info("Hello from process workqueue!")
 
     for item in workqueue:
         with item:
             data = item.data  # Item data deserialized from json as dict
  
             try:
-                # Hent borger
-                # Hent referencer
-                # Filtrer forløb
-                # Filtrer indsatser på forløb
-                # Check om hver indsats har status matchende regelsæt og om de er ændret indenfor de seneste 2 døgn
-                # Saml collection af indsatser på borger der skal have en opgave
-                # Loop collection:
-                # Kontroller blacklisted leverandør
-                # Check opgave historik
-                # Check paragraf ift. opgavemodtager
-                # Opret opgave på indsats til x
-                pass
+                borger = nexus.borgere.hent_borger(data["Cpr"])
+
+                if borger is None:
+                    raise WorkItemError(f"Borger med CPR {data['Cpr']} ikke fundet i Nexus")
+                
+                visning = nexus.borgere.hent_visning(borger)
+
+                if visning is None:
+                    raise WorkItemError(f"Visning for borger med CPR {data['Cpr']} ikke fundet i Nexus")
+
+                referencer = nexus.borgere.hent_referencer(visning)
+
+                if referencer is None:
+                    raise WorkItemError(f"Referencer for borger med CPR {data['Cpr']} ikke fundet i Nexus")
+                
+                forløbs_referencer = filter_by_path(
+                    referencer,
+                    "/Børn og Unge Grundforløb/patientPathwayReference",
+                    active_pathways_only=False,
+                )
+                
+                for forløb in forløbs_referencer:
+                    indsats_referencer = filter_by_path(
+                        referencer,
+                        f"/Børn og Unge Grundforløb/{forløb["name"]}/Indsatser/*",
+                        active_pathways_only=False
+                    )
+
+                    for indsats in indsats_referencer:
+                        indsats_date = datetime.fromisoformat(indsats["date"].replace("+0000", "+00:00"))
+                        if indsats["workflowState"]["name"] in regler["Status på indsats"] and indsats_date >= datetime.now(timezone.utc) - timedelta(days=2):
+                            opret_opgave_på_indsats(indsats)
+                
             except WorkItemError as e:
                 # A WorkItemError represents a soft error that indicates the item should be passed to manual processing or a business logic fault
                 logger.error(f"Error processing item: {data}. Error: {e}")
@@ -122,12 +196,9 @@ if __name__ == "__main__":
     # Load excel mapping data once on startup
     load_excel_mapping(args.excel_file)
 
-
-    # Initialize external systems for automation here..
-
     # Queue management
     if "--queue" in sys.argv:
-        workqueue.clear_workqueue("new")
+        workqueue.clear_workqueue(WorkItemStatus.NEW)
         asyncio.run(populate_queue(workqueue))
         exit(0)
 
