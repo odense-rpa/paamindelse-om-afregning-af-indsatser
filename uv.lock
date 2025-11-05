@@ -403,8 +403,8 @@ dependencies = [
 
 [[package]]
 name = "odk-tools"
-version = "0.1.0"
-source = { git = "https://github.com/odense-rpa/odk-tools.git?rev=master#1cd0e7e13e60d7751ae69cb15134f94a1cc1512b" }
+version = "0.1.1"
+source = { git = "https://github.com/odense-rpa/odk-tools.git?rev=master#b61f47f315719db6fefd817ba28b865be1d643fa" }
 dependencies = [
     { name = "pymssql" },
     { name = "zeep" },
