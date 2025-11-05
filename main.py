@@ -12,13 +12,11 @@ from kmd_nexus_client.tree_helpers import (
 )
 from nexus_database_client import NexusDatabaseClient
 from odk_tools.tracking import Tracker
-from odk_tools.reporting import Reporter
 from process.config import get_excel_mapping, load_excel_mapping
 
 nexus: NexusClientManager
 nexus_database_client: NexusDatabaseClient
 tracker: Tracker
-reporter: Reporter
 
 proces_navn = "Påmindelse om afregning af indsatser"
 
@@ -149,7 +147,6 @@ if __name__ == "__main__":
     nexus_credential = Credential.get_credential("KMD Nexus - produktion")
     nexus_database_credential = Credential.get_credential("KMD Nexus - database")    
     tracking_credential = Credential.get_credential("Odense SQL Server")
-    reporting_credential = Credential.get_credential("RoboA")
 
     nexus = NexusClientManager(
         client_id=nexus_credential.username,
@@ -168,11 +165,6 @@ if __name__ == "__main__":
     tracker = Tracker(
         username=tracking_credential.username, 
         password=tracking_credential.password
-    )
-
-    reporter = Reporter(
-        username=reporting_credential.username,
-        password=reporting_credential.password
     )
 
     # Parse command line arguments
