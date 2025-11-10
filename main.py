@@ -77,7 +77,7 @@ async def populate_queue(workqueue: Workqueue):
         borgere = nexus_database_client.hent_borgere_med_ændrede_indsatser(org, 2, regler["Status på indsats"])
 
         for borger in borgere:
-            eksisterende_kødata = workqueue.get_item_by_reference(borger["Cpr"])
+            eksisterende_kødata = workqueue.get_item_by_reference(borger["Cpr"], WorkItemStatus.NEW)
 
             if len(eksisterende_kødata) > 0:
                 continue
