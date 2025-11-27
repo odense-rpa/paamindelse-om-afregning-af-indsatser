@@ -55,7 +55,7 @@ def opret_opgave_på_indsats(indsats_reference: dict):
         # check if paragraf.name exist in paragraffer dict and if the value matches paragraf.section
         value = paragraffer.get(paragraf["name"], None)
         if value == paragraf["section"]:
-            opgave_modtager = "Løn og Personale"
+            opgave_modtager = "Løn og Personale 1"
 
     nexus.opgaver.opret_opgave(
         objekt=indsats,
