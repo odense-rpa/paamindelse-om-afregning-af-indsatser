@@ -1,6 +1,7 @@
 from typing import Dict, List
 from openpyxl import load_workbook
 
+
 def get_excel_mapping() -> Dict[str, List[str]]:
     """Henter excel-mapping"""
     global excel_mappings
@@ -9,7 +10,7 @@ def get_excel_mapping() -> Dict[str, List[str]]:
     return excel_mappings
 
 
-def load_excel_mapping(file_path: str):    
+def load_excel_mapping(file_path: str):
     global excel_mappings
     try:
         # Load workbook and get first worksheet

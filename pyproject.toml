@@ -10,6 +10,7 @@ dependencies = [
     "kmd-nexus-client",
     "nexus-database-client",
     "openpyxl",
+    "ruff>=0.15.13",
 ]
 
 [tool.uv.sources]
